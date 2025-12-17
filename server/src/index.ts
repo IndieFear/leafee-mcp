@@ -350,7 +350,7 @@ async function main() {
     void transport.handleRequest(req, res);
   });
 
-  const port = 3000;
+  const port = process.env.PORT || 3000;
   app.listen(port, () => {
     // eslint-disable-next-line no-console
     console.log(`Leafee MCP server running on http://localhost:${port}/mcp`);
