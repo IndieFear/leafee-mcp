@@ -1,0 +1,29 @@
+{
+  "name": "leafee-mcp",
+  "version": "1.0.0",
+  "description": "Leafee MCP server for plant identification and care recommendations.",
+  "main": "server/dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build:server": "tsc",
+    "start": "node server/dist/index.js",
+    "dev": "ts-node server/src/index.ts"
+  },
+  "keywords": [
+    "leafee",
+    "mcp",
+    "chatgpt-app",
+    "plants"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "express": "^5.2.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "zod": "^4.2.1"
+  }
+}
