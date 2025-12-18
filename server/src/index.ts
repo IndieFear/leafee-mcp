@@ -467,6 +467,9 @@ async function main() {
       inputSchema: z.object({
         uri: z.string().describe("L'URI de la ressource à récupérer."),
       }),
+      _meta: {
+        "openai/retrieval": true,
+      },
     },
     async ({ uri }) => {
       // eslint-disable-next-line no-console
