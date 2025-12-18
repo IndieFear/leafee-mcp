@@ -416,22 +416,20 @@ async function main() {
     }
   );
 
-  // Tool "retrievable" minimal pour aider ChatGPT à considérer le MCP comme exploitable
+  // Tool "search" minimal pour que ChatGPT considère le MCP comme "retrievable"
   server.registerTool(
-    "search_plants",
+    "search",
     {
-      title: "Rechercher des capacités Leafee",
+      title: "Search",
       description:
-        "Point d'entrée de recherche générique pour que ChatGPT puisse découvrir ce que Leafee sait faire.",
+        "Search entry point for discovering what Leafee can do.",
       inputSchema: z.object({
         query: z
           .string()
-          .describe(
-            "Texte libre décrivant ce que l'utilisateur cherche (plante, problème, fonctionnalité...)."
-          ),
+          .describe("Free-text query describing what the user is looking for."),
       }),
       _meta: {
-        // Indice pour l'UI OpenAI : ce tool peut servir de point d'entrée "search"
+        // Indice pour l'UI OpenAI : ce tool sert de point d'entrée "search"
         "openai/retrieval": true,
       },
     },
