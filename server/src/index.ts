@@ -19,7 +19,7 @@ export interface PlantAnalysisResult {
   shortSummary: string;
 }
 
-// Schéma d’entrée pour le tool analyze_plant (V1 sans image)
+// Schéma d’entrée pour le tool analyze_plant (V2 avec image optionnelle)
 const analyzePlantInputSchema = z.object({
   description: z
     .string()
@@ -36,6 +36,19 @@ const analyzePlantInputSchema = z.object({
     .optional()
     .describe(
       "Fréquence d'arrosage typique (par ex. '1 fois par semaine', 'tous les 3 jours')."
+    ),
+  imageUrl: z
+    .string()
+    .url()
+    .optional()
+    .describe(
+      "URL de l'image de la plante à analyser (utilisée pour l'identification via PlantNet)."
+    ),
+  organ: z
+    .string()
+    .optional()
+    .describe(
+      "Organe principal visible sur la photo (par ex. 'leaf', 'flower', 'fruit')."
     ),
 });
 
@@ -289,33 +302,101 @@ async function main() {
       },
     },
     async (input) => {
-      // TODO: brancher ici ton backend Leafee réel.
-      // Pour l’instant, on renvoie un résultat statique mais représentatif.
+      // Appel au backend Leafee via une Edge Function Supabase dédiée.
+      // L'URL doit être fournie via la variable d'environnement
+      // PLANT_ANALYSIS_FUNCTION_URL (ex:
+      // https://<project-ref>.functions.supabase.co/plant-analysis)
+      const fnUrl = process.env.PLANT_ANALYSIS_FUNCTION_URL;
 
-      const description = input.description;
+      if (!fnUrl) {
+        throw new Error(
+          "PLANT_ANALYSIS_FUNCTION_URL n'est pas configurée dans l'environnement."
+        );
+      }
 
-      const mockResult: PlantAnalysisResult = {
-        plantName: "Pothos doré",
-        confidence: 0.86,
-        issues: [
-          {
-            code: "under_watering",
-            label: "Probable manque d'eau",
+      let analysis: PlantAnalysisResult;
+
+      try {
+        const response = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-language": "fr",
           },
-          {
-            code: "low_light",
-            label: "Lumière possiblement insuffisante",
-          },
-        ],
-        severity: "medium",
-        shortSummary:
-          "Votre plante montre des signes de stress modéré, probablement liés à un manque d'eau et de lumière. Ajustons ensemble son arrosage et son emplacement.",
-      };
+          body: JSON.stringify({
+            description: input.description,
+            room: input.room ?? undefined,
+            wateringFrequency: input.wateringFrequency ?? undefined,
+            imageUrl: input.imageUrl ?? undefined,
+            organ: input.organ ?? undefined,
+          }),
+        });
 
-      const contentText =
-        "Voici une analyse initiale de votre plante basée sur votre description. Leafee affiche le diagnostic détaillé dans le widget.";
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new Error(
+            `Edge Function plant-analysis a retourné ${response.status}: ${text}`
+          );
+        }
 
-      const structuredContent = mockResult as unknown as {
+        const json = (await response.json()) as unknown;
+
+        // Validation légère runtime pour se protéger des réponses inattendues
+        const candidate = json as Partial<PlantAnalysisResult>;
+
+        analysis = {
+          plantName: candidate.plantName ?? "Plante d'intérieur",
+          confidence:
+            typeof candidate.confidence === "number"
+              ? Math.max(0, Math.min(1, candidate.confidence))
+              : 0.7,
+          issues:
+            Array.isArray(candidate.issues) && candidate.issues.length > 0
+              ? candidate.issues.map((issue) => ({
+                  code:
+                    typeof issue?.code === "string"
+                      ? issue.code
+                      : "unknown_issue",
+                  label:
+                    typeof issue?.label === "string"
+                      ? issue.label
+                      : "Problème potentiel",
+                }))
+              : [],
+          severity:
+            candidate.severity === "low" ||
+            candidate.severity === "medium" ||
+            candidate.severity === "high"
+              ? candidate.severity
+              : "medium",
+          shortSummary:
+            typeof candidate.shortSummary === "string" &&
+            candidate.shortSummary.trim().length > 0
+              ? candidate.shortSummary
+              : "Votre plante montre quelques signes de stress. Ajustons l'arrosage et la lumière, puis surveillons l'évolution.",
+        };
+      } catch (error) {
+        // En cas d'échec, on renvoie un fallback raisonnable pour ne pas casser l'expérience.
+        // eslint-disable-next-line no-console
+        console.error("Erreur lors de l'appel à plant-analysis:", error);
+
+        analysis = {
+          plantName: "Plante d'intérieur",
+          confidence: 0.5,
+          issues: [
+            {
+              code: "analysis_error",
+              label:
+                "Impossible de récupérer l'analyse détaillée pour le moment. Réessayez plus tard.",
+            },
+          ],
+          severity: "medium",
+          shortSummary:
+            "Leafee a rencontré un problème pour analyser cette plante. Vous pouvez vérifier l'arrosage, la lumière et l'état des feuilles en attendant.",
+        };
+      }
+
+      const structuredContent = analysis as unknown as {
         [x: string]: unknown;
       };
 
@@ -324,12 +405,12 @@ async function main() {
         content: [
           {
             type: "text",
-            text: contentText,
+            text:
+              "Voici l'analyse de votre plante basée sur votre description. Leafee affiche le diagnostic détaillé dans le widget.",
           },
         ],
         _meta: {
-          originalDescription: description,
-          // Place pour inclure des données supplémentaires non visibles par le modèle
+          originalDescription: input.description,
         },
       };
     }
