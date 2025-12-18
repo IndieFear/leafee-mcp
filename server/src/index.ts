@@ -31,7 +31,7 @@ export interface PlantAnalysisResult {
 }
 
 /**
- * HTML DU WIDGET (Inspiré des exemples OpenAI)
+ * HTML DU WIDGET (Version ultra-robuste pour l'Apps SDK)
  */
 const WIDGET_HTML = `
 <!DOCTYPE html>
@@ -41,100 +41,64 @@ const WIDGET_HTML = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Leafee Plant Analyzer</title>
     <style>
-      :root {
-        --primary: #10b981;
-        --bg: #ffffff;
-        --text: #0f172a;
-        --text-muted: #64748b;
-        --border: #e2e8f0;
-      }
-      body { 
-        margin: 0; 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-        background: transparent; 
-        color: var(--text);
-      }
-      .card { 
-        background: var(--bg); 
-        border: 1px solid var(--border);
-        border-radius: 12px; 
-        padding: 16px; 
-        display: flex; 
-        flex-direction: column; 
-        gap: 12px;
-        max-width: 100%;
-        box-sizing: border-box;
-      }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; }
-      .plant-name { font-size: 18px; font-weight: 700; color: #065f46; }
-      .badge { 
-        border-radius: 999px; 
-        padding: 4px 12px; 
-        font-size: 12px; 
-        font-weight: 600; 
-        text-transform: uppercase;
-      }
+      :root { --primary: #10b981; --bg: #ffffff; --text: #0f172a; --text-muted: #64748b; --border: #e2e8f0; }
+      body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: transparent; color: var(--text); overflow: hidden; }
+      .card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+      .header { display: flex; justify-content: space-between; align-items: center; }
+      .plant-name { font-size: 16px; font-weight: 700; color: #065f46; }
+      .badge { border-radius: 99px; padding: 2px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
       .severity-low { background: #dcfce7; color: #166534; }
       .severity-medium { background: #fef9c3; color: #854d0e; }
       .severity-high { background: #fee2e2; color: #991b1b; }
-      .summary { font-size: 14px; line-height: 1.5; color: var(--text-muted); margin: 0; }
-      .issues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-      .issue-tag { 
-        background: #f1f5f9; 
-        border: 1px solid var(--border);
-        padding: 2px 8px; 
-        border-radius: 6px; 
-        font-size: 11px; 
-        color: #475569;
-      }
-      .loading { text-align: center; padding: 20px; color: var(--text-muted); font-style: italic; }
+      .summary { font-size: 13px; line-height: 1.4; color: var(--text-muted); margin: 0; }
+      .loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
     </style>
   </head>
   <body>
     <div id="app">
-      <div class="loading">Chargement du diagnostic Leafee...</div>
+      <div class="loading">Initialisation Leafee...</div>
     </div>
 
     <script type="module">
-      // L'Apps SDK injecte les données dans window.openai
-      const getOutput = () => (window.openai && window.openai.toolOutput) || null;
+      const app = document.getElementById("app");
       
-      const render = () => {
-        const output = getOutput();
-        const app = document.getElementById("app");
+      function render() {
+        // L'Apps SDK injecte toolOutput dans window.openai
+        const output = window.openai?.toolOutput;
         
         if (!output) {
-          app.innerHTML = '<div class="loading">En attente des données d\\'analyse...</div>';
+          app.innerHTML = '<div class="loading">🔍 En attente des données d\\'analyse...</div>';
+          // On réessaie dans 200ms si les données ne sont pas encore là
+          setTimeout(render, 200);
           return;
         }
 
-        const issuesHtml = (output.issues || [])
-          .map(issue => \`<span class="issue-tag">\${issue.label}</span>\`)
-          .join('');
+        const { plantName, severity, shortSummary, issues } = output;
 
         app.innerHTML = \`
           <div class="card">
             <div class="header">
-              <div class="plant-name">\${output.plantName || 'Plante analysée'}</div>
-              <div class="badge severity-\${output.severity || 'medium'}">
-                \${output.severity === 'low' ? 'Saine' : output.severity === 'high' ? 'Urgent' : 'À surveiller'}
+              <div class="plant-name">\${plantName || 'Plante'}</div>
+              <div class="badge severity-\${severity || 'medium'}">
+                \${severity === 'low' ? 'Saine' : severity === 'high' ? 'Urgent' : 'À surveiller'}
               </div>
             </div>
-            <p class="summary">\${output.shortSummary || 'Pas de résumé disponible.'}</p>
-            \${output.issues && output.issues.length > 0 ? \`
-              <div style="font-size: 12px; font-weight: 600; color: #94a3b8; margin-top: 4px;">POINTS D'ATTENTION :</div>
-              <div class="issues">\${issuesHtml}</div>
+            <p class="summary">\${shortSummary || 'Analyse terminée.'}</p>
+            \${issues && issues.length > 0 ? \`
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                \${issues.map(i => \`<span style="background:#f8fafc; border:1px solid #f1f5f9; padding:1px 6px; border-radius:4px; font-size:10px;">\${i.label}</span>\`).join('')}
+              </div>
             \` : ''}
           </div>
         \`;
-      };
+      }
 
-      // Rendu initial
+      // Lancement
       render();
 
-      // Écouter les changements d'état si nécessaire (pour les interactions)
-      if (window.openai && typeof window.openai.onStateChange === 'function') {
-        window.openai.onStateChange(() => render());
+      // Écoute des mises à jour dynamiques
+      if (window.openai?.onStateChange) {
+        window.openai.onStateChange(render);
       }
     </script>
   </body>
@@ -186,7 +150,7 @@ async function main() {
       contents: [
         {
           uri: WIDGET_URL,
-          mimeType: "text/html",
+          mimeType: "text/html+skybridge",
           text: WIDGET_HTML,
         },
       ],
@@ -304,7 +268,7 @@ async function main() {
   const app = express();
   app.use(express.json());
 
-  // CORS
+  // CORS complet pour l'Apps SDK
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -319,8 +283,9 @@ async function main() {
   });
 
   // ROUTE POUR LE WIDGET (Crucial pour l'Apps SDK)
-  app.get(WIDGET_PATH, (_req, res) => {
-    res.status(200).type("text/html").send(WIDGET_HTML);
+  app.get(WIDGET_PATH, (req, res) => {
+    console.log(`[Widget] Serving widget HTML to ${req.ip}`);
+    res.status(200).type("text/html+skybridge").send(WIDGET_HTML);
   });
 
   // MCP endpoints
