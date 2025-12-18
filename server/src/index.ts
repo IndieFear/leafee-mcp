@@ -187,8 +187,6 @@ async function main() {
         content: [{ type: "text", text: "Diagnostic disponible dans le widget Leafee." }],
         _meta: {
           "openai/outputTemplate": WIDGET_URI,
-          "openai/widgetAccessible": true,
-          "openai/resultCanProduceWidget": true
         },
       };
     }
@@ -199,7 +197,7 @@ async function main() {
     "search",
     {
       title: "Search",
-      description: "Rechercher des informations sur les plantes et l'entretien.",
+      description: "Rechercher des informations sur l'entretien et les maladies des plantes.",
       inputSchema: z.object({
         query: z.string().describe("La requête de recherche (ex: 'entretien Monstera', 'tâches brunes feuilles').")
       }),
@@ -208,8 +206,21 @@ async function main() {
     async ({ query }) => {
       // eslint-disable-next-line no-console
       console.log(`[Tool:search] Query: ${query}`);
+      
+      const results = [
+        {
+          id: "guide-entretien-general",
+          title: `Guide d'entretien pour : ${query}`,
+          description: "Conseils sur l'arrosage, la lumière et les soins.",
+        }
+      ];
+
       return {
-        content: [{ type: "text", text: `Recherche Leafee pour: ${query}` }],
+        content: [{ 
+          type: "text", 
+          text: `Résultats de recherche pour "${query}":\n- ${results[0].title}: ${results[0].description}` 
+        }],
+        structuredContent: { results }
       };
     }
   );
@@ -219,7 +230,7 @@ async function main() {
     "fetch",
     {
       title: "Fetch",
-      description: "Récupérer le contenu d'une ressource via son identifiant.",
+      description: "Récupérer le contenu détaillé d'une ressource via son identifiant.",
       inputSchema: z.object({ id: z.string().describe("L'identifiant de la ressource à récupérer.") }),
       _meta: { "openai/retrieval": true },
     },
@@ -227,7 +238,10 @@ async function main() {
       // eslint-disable-next-line no-console
       console.log(`[Tool:fetch] ID: ${id}`);
       return {
-        content: [{ type: "text", text: `Contenu de la ressource: ${id}` }],
+        content: [{ 
+          type: "text", 
+          text: `Contenu de la ressource ${id} : Pour un diagnostic personnalisé, utilisez l'outil 'analyze_plant'.` 
+        }],
       };
     }
   );
