@@ -2,19 +2,31 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { z } from "zod";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 /**
- * CONFIGURATION & TYPES
+ * CONSTANTS & CONFIGURATION
  */
 const SERVER_NAME = "leafee-mcp";
-const SERVER_VERSION = "1.1.0";
+const SERVER_VERSION = "2.0.0";
 const PORT = process.env.PORT || 3000;
 
-// URL de base pour les widgets (doit être accessible par ChatGPT)
+// Base URL for fallback/direct access
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const WIDGET_PATH = "/widget/plant-analyzer";
-const WIDGET_URL = `${BASE_URL}${WIDGET_PATH}`;
 
+// Apps SDK Specific URIs (Must use ui:// schema)
+const WIDGET_URI = "ui://widget/plant-analyzer.html";
+const WIDGET_PATH = "/widget/plant-analyzer";
+
+// File paths for widget assets
+const WEB_SRC_DIR = path.join(process.cwd(), "web", "src");
+const CSS_PATH = path.join(WEB_SRC_DIR, "style.css");
+const JS_PATH = path.join(WEB_SRC_DIR, "widget.js");
+
+/**
+ * TYPES
+ */
 export type PlantIssueSeverity = "low" | "medium" | "high";
 
 export interface PlantIssue {
@@ -28,161 +40,102 @@ export interface PlantAnalysisResult {
   issues: PlantIssue[];
   severity: PlantIssueSeverity;
   shortSummary: string;
+  careTips?: string[];
 }
 
 /**
- * HTML DU WIDGET (Version ultra-robuste pour l'Apps SDK)
+ * WIDGET TEMPLATE GENERATOR
+ * Returns the HTML/CSS/JS bundle for the ChatGPT iframe.
  */
-const WIDGET_HTML = `
+function generateWidgetTemplate(): string {
+  try {
+    const css = readFileSync(CSS_PATH, "utf8");
+    const js = readFileSync(JS_PATH, "utf8");
+
+    return `
 <!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Leafee Plant Analyzer</title>
-    <style>
-      :root { --primary: #10b981; --bg: #ffffff; --text: #0f172a; --text-muted: #64748b; --border: #e2e8f0; }
-      body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: transparent; color: var(--text); overflow: hidden; }
-      .card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-      .header { display: flex; justify-content: space-between; align-items: center; }
-      .plant-name { font-size: 16px; font-weight: 700; color: #065f46; }
-      .badge { border-radius: 99px; padding: 2px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-      .severity-low { background: #dcfce7; color: #166534; }
-      .severity-medium { background: #fef9c3; color: #854d0e; }
-      .severity-high { background: #fee2e2; color: #991b1b; }
-      .summary { font-size: 13px; line-height: 1.4; color: var(--text-muted); margin: 0; }
-      .loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
-    </style>
+    <title>Leafee Widget</title>
+    <style>${css}</style>
   </head>
   <body>
-    <div id="app">
-      <div class="loading">Initialisation Leafee...</div>
-    </div>
-
-    <script type="module">
-      const app = document.getElementById("app");
-      
-      function render() {
-        // L'Apps SDK injecte toolOutput dans window.openai
-        const output = window.openai?.toolOutput;
-        
-        if (!output) {
-          app.innerHTML = '<div class="loading">🔍 En attente des données d\\'analyse...</div>';
-          // On réessaie dans 200ms si les données ne sont pas encore là
-          setTimeout(render, 200);
-          return;
-        }
-
-        const { plantName, severity, shortSummary, issues } = output;
-
-        app.innerHTML = \`
-          <div class="card">
-            <div class="header">
-              <div class="plant-name">\${plantName || 'Plante'}</div>
-              <div class="badge severity-\${severity || 'medium'}">
-                \${severity === 'low' ? 'Saine' : severity === 'high' ? 'Urgent' : 'À surveiller'}
-              </div>
-            </div>
-            <p class="summary">\${shortSummary || 'Analyse terminée.'}</p>
-            \${issues && issues.length > 0 ? \`
-              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                \${issues.map(i => \`<span style="background:#f8fafc; border:1px solid #f1f5f9; padding:1px 6px; border-radius:4px; font-size:10px;">\${i.label}</span>\`).join('')}
-              </div>
-            \` : ''}
-          </div>
-        \`;
-      }
-
-      // Lancement
-      render();
-
-      // Écoute des mises à jour dynamiques
-      if (window.openai?.onStateChange) {
-        window.openai.onStateChange(render);
-      }
-    </script>
+    <div id="app"></div>
+    <script type="module">${js}</script>
   </body>
 </html>
-`;
+    `.trim();
+  } catch (error) {
+    console.error("[Template] Error reading assets:", error);
+    return `<!DOCTYPE html><html><body><div style="color:red;padding:20px;">Widget Error: Missing assets</div></body></html>`;
+  }
+}
 
 /**
- * SCHÉMAS DE VALIDATION (ZOD)
+ * MCP SERVER IMPLEMENTATION
  */
-const analyzePlantInputSchema = z.object({
-  description: z
-    .string()
-    .min(5)
-    .describe("Description de la plante et des symptômes observés."),
-  room: z
-    .string()
-    .optional()
-    .describe("Pièce ou emplacement de la plante."),
-  wateringFrequency: z
-    .string()
-    .optional()
-    .describe("Fréquence d'arrosage typique."),
-  imageUrl: z
-    .string()
-    .url()
-    .optional()
-    .describe("URL de l'image de la plante à analyser."),
-  organ: z
-    .string()
-    .optional()
-    .describe("Organe principal visible sur la photo."),
-});
-
-async function main() {
+async function bootstrap() {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
-    description: "Expert en plantes Leafee. Fournit des diagnostics de santé, des conseils d'entretien et une recherche de connaissances sur les plantes.",
+    description: "Expert en soins des plantes Leafee. Fournit des diagnostics et conseils via widgets interactifs.",
   });
 
   /**
-   * 1. RESSOURCES (MCP COMPLIANCE)
+   * 1. REGISTER UI RESOURCE
+   * This is the template ChatGPT will load into the iframe.
    */
   server.registerResource(
-    "leafee-plant-widget",
-    WIDGET_URL,
-    { title: "Leafee Plant Analysis Widget" },
+    "plant-analyzer-widget",
+    WIDGET_URI,
+    { title: "Leafee Plant Analyzer Widget" },
     async () => ({
       contents: [
         {
-          uri: WIDGET_URL,
+          uri: WIDGET_URI,
           mimeType: "text/html+skybridge",
-          text: WIDGET_HTML,
+          text: generateWidgetTemplate(),
+          _meta: {
+            "openai/widgetPrefersBorder": true,
+            "openai/widgetDomain": "https://chatgpt.com",
+            "openai/widgetCSP": {
+              connect_domains: ["https://chatgpt.com", BASE_URL],
+              resource_domains: ["https://*.oaistatic.com"],
+            },
+            "openai/widgetDescription": "Affiche l'analyse de santé de la plante et des conseils d'entretien interactifs.",
+          },
         },
       ],
     })
   );
 
   /**
-   * 2. OUTILS (TOOLS)
+   * 2. REGISTER TOOLS
    */
   server.registerTool(
     "analyze_plant",
     {
-      title: "Analyser une plante Leafee",
-      description: "Analyse les symptômes d'une plante (via description ou image) et retourne un diagnostic de santé complet.",
-      inputSchema: analyzePlantInputSchema,
+      title: "Analyser une plante",
+      description: "Analyse une plante à partir de sa description ou d'une image.",
+      inputSchema: {
+        description: z.string().describe("Description des symptômes ou de l'état de la plante."),
+        imageUrl: z.string().url().optional().describe("URL de l'image de la plante."),
+      },
       _meta: {
-        "openai/outputTemplate": WIDGET_URL,
-        "openai/toolInvocation/invoking": "Leafee analyse votre plante...",
-        "openai/toolInvocation/invoked": "Analyse terminée.",
+        "openai/outputTemplate": WIDGET_URI,
         "openai/widgetAccessible": true,
-        "openai/resultCanProduceWidget": true
+        "openai/resultCanProduceWidget": true,
+        "openai/toolInvocation/invoking": "Leafee prépare le diagnostic...",
+        "openai/toolInvocation/invoked": "Diagnostic prêt.",
       },
     },
     async (input) => {
-      console.log(`[Tool:analyze_plant] Input: ${JSON.stringify(input)}`);
+      console.log(`[Tool:analyze_plant] Processing input...`);
       
       const fnUrl = process.env.PLANT_ANALYSIS_FUNCTION_URL;
-      if (!fnUrl) {
-        throw new Error("PLANT_ANALYSIS_FUNCTION_URL non configurée.");
-      }
-
-      let analysis: PlantAnalysisResult;
+      if (!fnUrl) throw new Error("Missing PLANT_ANALYSIS_FUNCTION_URL");
 
       try {
         const response = await fetch(fnUrl, {
@@ -191,76 +144,45 @@ async function main() {
           body: JSON.stringify(input),
         });
 
-        if (!response.ok) {
-          throw new Error(`Erreur API: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`API Error: ${response.status}`);
+        const data = (await response.json()) as Partial<PlantAnalysisResult>;
 
-        const json = (await response.json()) as Partial<PlantAnalysisResult>;
-        analysis = {
-          plantName: json.plantName ?? "Plante d'intérieur",
-          confidence: json.confidence ?? 0.7,
-          issues: Array.isArray(json.issues) ? json.issues : [],
-          severity: json.severity ?? "medium",
-          shortSummary: json.shortSummary ?? "Analyse terminée avec succès.",
+        const result: PlantAnalysisResult = {
+          plantName: data.plantName ?? "Plante inconnue",
+          confidence: data.confidence ?? 1.0,
+          issues: data.issues ?? [],
+          severity: data.severity ?? "medium",
+          shortSummary: data.shortSummary ?? "Analyse terminée.",
+          careTips: data.careTips ?? ["Vérifiez l'exposition", "Ajustez l'arrosage"],
+        };
+
+        return {
+          // structuredContent: What the model sees (Keep it concise)
+          structuredContent: {
+            plant: result.plantName,
+            status: result.severity,
+            summary: result.shortSummary,
+          },
+          // content: Optional narration for the chat
+          content: [{ type: "text", text: `J'ai terminé l'analyse de votre ${result.plantName}.` }],
+          // _meta: Rich data for the widget only
+          _meta: {
+            ...result,
+            "openai/outputTemplate": WIDGET_URI,
+          },
         };
       } catch (error) {
         console.error("[Tool:analyze_plant] Error:", error);
-        analysis = {
-          plantName: "Plante",
-          confidence: 0.5,
-          issues: [{ code: "error", label: "Analyse indisponible" }],
-          severity: "medium",
-          shortSummary: "Une erreur est survenue lors de l'analyse.",
+        return {
+          content: [{ type: "text", text: "Désolé, je n'ai pas pu analyser la plante pour le moment." }],
+          structuredContent: { error: "Analysis failed" }
         };
       }
-
-      return {
-        structuredContent: analysis as any,
-        content: [{ type: "text", text: `Voici l'analyse pour votre ${analysis.plantName}.` }],
-        _meta: {
-          "openai/outputTemplate": WIDGET_URL,
-        },
-      };
-    }
-  );
-
-  // Tool "search"
-  server.registerTool(
-    "search",
-    {
-      title: "Search",
-      description: "Rechercher dans la base de connaissances Leafee.",
-      inputSchema: z.object({
-        query: z.string().describe("Termes de recherche.")
-      }),
-      _meta: { "openai/retrieval": true },
-    },
-    async ({ query }) => {
-      return {
-        content: [{ type: "text", text: `Recherche de guides pour "${query}"...` }],
-        structuredContent: { results: [] }
-      };
-    }
-  );
-
-  // Tool "fetch"
-  server.registerTool(
-    "fetch",
-    {
-      title: "Fetch",
-      description: "Récupérer le contenu détaillé.",
-      inputSchema: z.object({ id: z.string() }),
-      _meta: { "openai/retrieval": true },
-    },
-    async ({ id }) => {
-      return {
-        content: [{ type: "text", text: `Détails pour ${id}.` }],
-      };
     }
   );
 
   /**
-   * 3. TRANSPORT & EXPRESS
+   * 3. TRANSPORT & EXPRESS SERVER
    */
   const transport = new StreamableHTTPServerTransport();
   await server.connect(transport);
@@ -268,7 +190,7 @@ async function main() {
   const app = express();
   app.use(express.json());
 
-  // CORS complet pour l'Apps SDK
+  // CORS - Required for Apps SDK communication
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -277,33 +199,29 @@ async function main() {
     next();
   });
 
-  // Challenge OpenAI
-  app.get("/.well-known/openai-apps-challenge", (_req, res) => {
+  // Verification endpoint for OpenAI
+  app.get("/.well-known/openai-apps-challenge", (_, res) => {
     res.status(200).type("text/plain").send("vEtncRd9ZUFWSxBh7jk87AyvDGWZnfK0S_W9JBiVKxA");
   });
 
-  // ROUTE POUR LE WIDGET (Crucial pour l'Apps SDK)
-  app.get(WIDGET_PATH, (req, res) => {
-    console.log(`[Widget] Serving widget HTML to ${req.ip}`);
-    res.status(200).type("text/html+skybridge").send(WIDGET_HTML);
+  // Widget Route (Fallback for direct embedding or development)
+  app.get(WIDGET_PATH, (_, res) => {
+    res.status(200).type("text/html+skybridge").send(generateWidgetTemplate());
   });
 
-  // MCP endpoints
-  app.post("/", (req, res) => {
-    void transport.handleRequest(req, res, req.body);
-  });
-
-  app.get("/", (req, res) => {
-    void transport.handleRequest(req, res);
-  });
+  // MCP Standard Endpoints
+  app.post("/", (req, res) => transport.handleRequest(req, res, req.body));
+  app.get("/", (req, res) => transport.handleRequest(req, res));
 
   app.listen(PORT, () => {
-    console.log(`Leafee MCP server running on port ${PORT}`);
-    console.log(`Widget available at: ${WIDGET_URL}`);
+    console.log(`\n🚀 Leafee MCP Server v${SERVER_VERSION}`);
+    console.log(`- MCP Endpoint: ${BASE_URL}/`);
+    console.log(`- Widget URI: ${WIDGET_URI}`);
+    console.log(`- Widget Fallback: ${BASE_URL}${WIDGET_PATH}\n`);
   });
 }
 
-main().catch((err) => {
-  console.error("Failed to start server", err);
+bootstrap().catch((err) => {
+  console.error("Critical failure during bootstrap:", err);
   process.exit(1);
 });

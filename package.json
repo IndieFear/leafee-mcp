@@ -1,14 +1,14 @@
 {
   "name": "leafee-mcp",
-  "version": "1.0.0",
-  "description": "Leafee MCP server for plant identification and care recommendations.",
+  "version": "2.0.0",
+  "description": "Leafee MCP server - Apps SDK Compliant",
   "main": "server/dist/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "build:server": "tsc",
     "start": "node server/dist/index.js",
-    "dev": "ts-node server/src/index.ts"
+    "dev": "ts-node server/src/index.ts",
+    "lint": "tsc --noEmit"
   },
   "keywords": [
     "leafee",
