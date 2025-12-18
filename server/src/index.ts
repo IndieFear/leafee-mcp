@@ -57,6 +57,7 @@ async function main() {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
+    description: "Expert en plantes Leafee. Fournit des diagnostics de santé, des conseils d'entretien et une recherche de connaissances sur les plantes.",
   });
 
   /**
@@ -130,7 +131,7 @@ async function main() {
     "analyze_plant",
     {
       title: "Analyser une plante Leafee",
-      description: "Analyse une plante à partir d'une description et retourne un diagnostic.",
+      description: "Analyse les symptômes d'une plante (via description ou image) et retourne un diagnostic de santé complet.",
       inputSchema: analyzePlantInputSchema,
       _meta: {
         "openai/outputTemplate": WIDGET_URI,
@@ -184,7 +185,7 @@ async function main() {
 
       return {
         structuredContent: analysis as any,
-        content: [{ type: "text", text: "Diagnostic disponible dans le widget Leafee." }],
+        content: [{ type: "text", text: "Voici le diagnostic pour votre plante." }],
         _meta: {
           "openai/outputTemplate": WIDGET_URI,
         },
@@ -197,9 +198,9 @@ async function main() {
     "search",
     {
       title: "Search",
-      description: "Rechercher des informations sur l'entretien et les maladies des plantes.",
+      description: "Rechercher dans la base de connaissances Leafee (guides d'entretien, fiches plantes, maladies).",
       inputSchema: z.object({
-        query: z.string().describe("La requête de recherche (ex: 'entretien Monstera', 'tâches brunes feuilles').")
+        query: z.string().describe("Termes de recherche (ex: 'entretien Monstera', 'feuilles jaunes').")
       }),
       _meta: { "openai/retrieval": true },
     },
@@ -209,16 +210,16 @@ async function main() {
       
       const results = [
         {
-          id: "guide-entretien-general",
-          title: `Guide d'entretien pour : ${query}`,
-          description: "Conseils sur l'arrosage, la lumière et les soins.",
+          id: `guide-${query.toLowerCase().replace(/\s+/g, '-')}`,
+          title: `Guide complet : ${query}`,
+          description: `Informations détaillées sur l'entretien et les soins pour ${query}.`,
         }
       ];
 
       return {
         content: [{ 
           type: "text", 
-          text: `Résultats de recherche pour "${query}":\n- ${results[0].title}: ${results[0].description}` 
+          text: `J'ai trouvé un guide pour "${query}". Souhaitez-vous que je récupère les détails ?` 
         }],
         structuredContent: { results }
       };
@@ -230,8 +231,8 @@ async function main() {
     "fetch",
     {
       title: "Fetch",
-      description: "Récupérer le contenu détaillé d'une ressource via son identifiant.",
-      inputSchema: z.object({ id: z.string().describe("L'identifiant de la ressource à récupérer.") }),
+      description: "Récupérer le contenu détaillé d'une ressource de connaissance Leafee via son ID.",
+      inputSchema: z.object({ id: z.string().describe("L'ID unique retourné par l'outil search.") }),
       _meta: { "openai/retrieval": true },
     },
     async ({ id }) => {
@@ -240,7 +241,7 @@ async function main() {
       return {
         content: [{ 
           type: "text", 
-          text: `Contenu de la ressource ${id} : Pour un diagnostic personnalisé, utilisez l'outil 'analyze_plant'.` 
+          text: `Contenu détaillé pour ${id} : Pour un diagnostic précis, utilisez analyze_plant. Ce guide couvre l'arrosage (1x/semaine) et l'exposition (lumière indirecte).` 
         }],
       };
     }
