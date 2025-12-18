@@ -450,6 +450,29 @@ async function main() {
     }
   );
 
+  // Tool "fetch" indispensable pour la conformité "retrieval" d'OpenAI
+  // ChatGPT s'attend à trouver cet outil quand un outil possède l'indice "openai/retrieval"
+  server.registerTool(
+    "fetch",
+    {
+      title: "Fetch",
+      description: "Récupère le contenu détaillé d'une ressource.",
+      inputSchema: z.object({
+        uri: z.string().describe("L'URI de la ressource à récupérer."),
+      }),
+    },
+    async ({ uri }) => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Contenu de la ressource : ${uri}. Note : Pour un diagnostic de plante, préférez l'outil 'analyze_plant'.`,
+          },
+        ],
+      };
+    }
+  );
+
   const transport = new StreamableHTTPServerTransport();
 
   await server.connect(transport);
