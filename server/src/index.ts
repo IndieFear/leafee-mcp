@@ -9,7 +9,11 @@ import { z } from "zod";
 const SERVER_NAME = "leafee-mcp";
 const SERVER_VERSION = "1.1.0";
 const PORT = process.env.PORT || 3000;
-const WIDGET_URI = "ui://widget/leafee-plant-analyzer.html";
+
+// URL de base pour les widgets (doit être accessible par ChatGPT)
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const WIDGET_PATH = "/widget/plant-analyzer";
+const WIDGET_URL = `${BASE_URL}${WIDGET_PATH}`;
 
 export type PlantIssueSeverity = "low" | "medium" | "high";
 
@@ -25,6 +29,117 @@ export interface PlantAnalysisResult {
   severity: PlantIssueSeverity;
   shortSummary: string;
 }
+
+/**
+ * HTML DU WIDGET (Inspiré des exemples OpenAI)
+ */
+const WIDGET_HTML = `
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leafee Plant Analyzer</title>
+    <style>
+      :root {
+        --primary: #10b981;
+        --bg: #ffffff;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+      }
+      body { 
+        margin: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        background: transparent; 
+        color: var(--text);
+      }
+      .card { 
+        background: var(--bg); 
+        border: 1px solid var(--border);
+        border-radius: 12px; 
+        padding: 16px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 12px;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; }
+      .plant-name { font-size: 18px; font-weight: 700; color: #065f46; }
+      .badge { 
+        border-radius: 999px; 
+        padding: 4px 12px; 
+        font-size: 12px; 
+        font-weight: 600; 
+        text-transform: uppercase;
+      }
+      .severity-low { background: #dcfce7; color: #166534; }
+      .severity-medium { background: #fef9c3; color: #854d0e; }
+      .severity-high { background: #fee2e2; color: #991b1b; }
+      .summary { font-size: 14px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+      .issues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+      .issue-tag { 
+        background: #f1f5f9; 
+        border: 1px solid var(--border);
+        padding: 2px 8px; 
+        border-radius: 6px; 
+        font-size: 11px; 
+        color: #475569;
+      }
+      .loading { text-align: center; padding: 20px; color: var(--text-muted); font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="loading">Chargement du diagnostic Leafee...</div>
+    </div>
+
+    <script type="module">
+      // L'Apps SDK injecte les données dans window.openai
+      const getOutput = () => (window.openai && window.openai.toolOutput) || null;
+      
+      const render = () => {
+        const output = getOutput();
+        const app = document.getElementById("app");
+        
+        if (!output) {
+          app.innerHTML = '<div class="loading">En attente des données d\\'analyse...</div>';
+          return;
+        }
+
+        const issuesHtml = (output.issues || [])
+          .map(issue => \`<span class="issue-tag">\${issue.label}</span>\`)
+          .join('');
+
+        app.innerHTML = \`
+          <div class="card">
+            <div class="header">
+              <div class="plant-name">\${output.plantName || 'Plante analysée'}</div>
+              <div class="badge severity-\${output.severity || 'medium'}">
+                \${output.severity === 'low' ? 'Saine' : output.severity === 'high' ? 'Urgent' : 'À surveiller'}
+              </div>
+            </div>
+            <p class="summary">\${output.shortSummary || 'Pas de résumé disponible.'}</p>
+            \${output.issues && output.issues.length > 0 ? \`
+              <div style="font-size: 12px; font-weight: 600; color: #94a3b8; margin-top: 4px;">POINTS D'ATTENTION :</div>
+              <div class="issues">\${issuesHtml}</div>
+            \` : ''}
+          </div>
+        \`;
+      };
+
+      // Rendu initial
+      render();
+
+      // Écouter les changements d'état si nécessaire (pour les interactions)
+      if (window.openai && typeof window.openai.onStateChange === 'function') {
+        window.openai.onStateChange(() => render());
+      }
+    </script>
+  </body>
+</html>
+`;
 
 /**
  * SCHÉMAS DE VALIDATION (ZOD)
@@ -61,62 +176,18 @@ async function main() {
   });
 
   /**
-   * 1. RESSOURCES (WIDGETS UI)
+   * 1. RESSOURCES (MCP COMPLIANCE)
    */
   server.registerResource(
     "leafee-plant-widget",
-    WIDGET_URI,
-    {},
+    WIDGET_URL,
+    { title: "Leafee Plant Analysis Widget" },
     async () => ({
       contents: [
         {
-          uri: WIDGET_URI,
-          mimeType: "text/html+skybridge",
-          text: `
-<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Leafee Plant Analyzer</title>
-    <style>
-      body { margin: 0; font-family: system-ui, sans-serif; background: #f5f7fb; color: #0f172a; }
-      .leafee-root { padding: 16px; }
-      .leafee-card { background: #ffffff; border-radius: 16px; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-      .badge { border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
-      .severity-low { background: rgba(34, 197, 94, 0.08); color: #15803d; }
-      .severity-medium { background: rgba(234, 179, 8, 0.08); color: #a16207; }
-      .severity-high { background: rgba(239, 68, 68, 0.08); color: #b91c1c; }
-    </style>
-  </head>
-  <body>
-    <div class="leafee-root">
-      <div class="leafee-card" id="leafee-card">
-        <div id="leafee-content">Chargement du diagnostic...</div>
-      </div>
-    </div>
-    <script type="module">
-      const output = (window.openai && window.openai.toolOutput) || {};
-      const contentEl = document.getElementById("leafee-content");
-
-      function render() {
-        if (!output || Object.keys(output).length === 0) {
-          contentEl.innerHTML = '<p>Demandez à Leafee d\'analyser une plante.</p>';
-          return;
-        }
-        contentEl.innerHTML = \`
-          <div style="font-weight: 600;">\${output.plantName || "Plante"}</div>
-          <div class="badge severity-\${output.severity || 'medium'}">\${output.severity || 'Analyse'}</div>
-          <p style="font-size: 13px; color: #4b5563;">\${output.shortSummary || ""}</p>
-        \`;
-      }
-      render();
-    </script>
-  </body>
-</html>
-          `.trim(),
-          _meta: {
-            "openai/widgetPrefersBorder": true,
-          },
+          uri: WIDGET_URL,
+          mimeType: "text/html",
+          text: WIDGET_HTML,
         },
       ],
     })
@@ -125,8 +196,6 @@ async function main() {
   /**
    * 2. OUTILS (TOOLS)
    */
-
-  // Tool principal: analyze_plant
   server.registerTool(
     "analyze_plant",
     {
@@ -134,7 +203,7 @@ async function main() {
       description: "Analyse les symptômes d'une plante (via description ou image) et retourne un diagnostic de santé complet.",
       inputSchema: analyzePlantInputSchema,
       _meta: {
-        "openai/outputTemplate": WIDGET_URI,
+        "openai/outputTemplate": WIDGET_URL,
         "openai/toolInvocation/invoking": "Leafee analyse votre plante...",
         "openai/toolInvocation/invoked": "Analyse terminée.",
         "openai/widgetAccessible": true,
@@ -142,7 +211,6 @@ async function main() {
       },
     },
     async (input) => {
-      // eslint-disable-next-line no-console
       console.log(`[Tool:analyze_plant] Input: ${JSON.stringify(input)}`);
       
       const fnUrl = process.env.PLANT_ANALYSIS_FUNCTION_URL;
@@ -169,15 +237,14 @@ async function main() {
           confidence: json.confidence ?? 0.7,
           issues: Array.isArray(json.issues) ? json.issues : [],
           severity: json.severity ?? "medium",
-          shortSummary: json.shortSummary ?? "Analyse en cours...",
+          shortSummary: json.shortSummary ?? "Analyse terminée avec succès.",
         };
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("[Tool:analyze_plant] Error:", error);
         analysis = {
           plantName: "Plante",
           confidence: 0.5,
-          issues: [{ code: "error", label: "Analyse impossible" }],
+          issues: [{ code: "error", label: "Analyse indisponible" }],
           severity: "medium",
           shortSummary: "Une erreur est survenue lors de l'analyse.",
         };
@@ -185,64 +252,45 @@ async function main() {
 
       return {
         structuredContent: analysis as any,
-        content: [{ type: "text", text: "Voici le diagnostic pour votre plante." }],
+        content: [{ type: "text", text: `Voici l'analyse pour votre ${analysis.plantName}.` }],
         _meta: {
-          "openai/outputTemplate": WIDGET_URI,
+          "openai/outputTemplate": WIDGET_URL,
         },
       };
     }
   );
 
-  // Tool "search" (Retrieval)
+  // Tool "search"
   server.registerTool(
     "search",
     {
       title: "Search",
-      description: "Rechercher dans la base de connaissances Leafee (guides d'entretien, fiches plantes, maladies).",
+      description: "Rechercher dans la base de connaissances Leafee.",
       inputSchema: z.object({
-        query: z.string().describe("Termes de recherche (ex: 'entretien Monstera', 'feuilles jaunes').")
+        query: z.string().describe("Termes de recherche.")
       }),
       _meta: { "openai/retrieval": true },
     },
     async ({ query }) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Tool:search] Query: ${query}`);
-      
-      const results = [
-        {
-          id: `guide-${query.toLowerCase().replace(/\s+/g, '-')}`,
-          title: `Guide complet : ${query}`,
-          description: `Informations détaillées sur l'entretien et les soins pour ${query}.`,
-        }
-      ];
-
       return {
-        content: [{ 
-          type: "text", 
-          text: `J'ai trouvé un guide pour "${query}". Souhaitez-vous que je récupère les détails ?` 
-        }],
-        structuredContent: { results }
+        content: [{ type: "text", text: `Recherche de guides pour "${query}"...` }],
+        structuredContent: { results: [] }
       };
     }
   );
 
-  // Tool "fetch" (Retrieval - Requis par OpenAI)
+  // Tool "fetch"
   server.registerTool(
     "fetch",
     {
       title: "Fetch",
-      description: "Récupérer le contenu détaillé d'une ressource de connaissance Leafee via son ID.",
-      inputSchema: z.object({ id: z.string().describe("L'ID unique retourné par l'outil search.") }),
+      description: "Récupérer le contenu détaillé.",
+      inputSchema: z.object({ id: z.string() }),
       _meta: { "openai/retrieval": true },
     },
     async ({ id }) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Tool:fetch] ID: ${id}`);
       return {
-        content: [{ 
-          type: "text", 
-          text: `Contenu détaillé pour ${id} : Pour un diagnostic précis, utilisez analyze_plant. Ce guide couvre l'arrosage (1x/semaine) et l'exposition (lumière indirecte).` 
-        }],
+        content: [{ type: "text", text: `Détails pour ${id}.` }],
       };
     }
   );
@@ -256,7 +304,7 @@ async function main() {
   const app = express();
   app.use(express.json());
 
-  // Middleware CORS complet pour l'Apps SDK
+  // CORS
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -265,30 +313,32 @@ async function main() {
     next();
   });
 
+  // Challenge OpenAI
   app.get("/.well-known/openai-apps-challenge", (_req, res) => {
     res.status(200).type("text/plain").send("vEtncRd9ZUFWSxBh7jk87AyvDGWZnfK0S_W9JBiVKxA");
   });
 
+  // ROUTE POUR LE WIDGET (Crucial pour l'Apps SDK)
+  app.get(WIDGET_PATH, (_req, res) => {
+    res.status(200).type("text/html").send(WIDGET_HTML);
+  });
+
+  // MCP endpoints
   app.post("/mcp", (req, res) => {
-    // eslint-disable-next-line no-console
-    console.log(`[MCP] POST Request`);
     void transport.handleRequest(req, res, req.body);
   });
 
   app.get("/mcp", (req, res) => {
-    // eslint-disable-next-line no-console
-    console.log(`[MCP] GET Request`);
     void transport.handleRequest(req, res);
   });
 
   app.listen(PORT, () => {
-    // eslint-disable-next-line no-console
     console.log(`Leafee MCP server running on port ${PORT}`);
+    console.log(`Widget available at: ${WIDGET_URL}`);
   });
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error("Failed to start server", err);
   process.exit(1);
 });

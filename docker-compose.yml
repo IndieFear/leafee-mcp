@@ -12,6 +12,7 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - BASE_URL=https://mcp.plantbuddy.com
       - PLANT_ANALYSIS_FUNCTION_URL=https://jicsxjcvbbvxzybeqfpo.supabase.co/functions/v1/plant-analysis-mcp
     labels:
       - "coolify.domain=mcp.plantbuddy.com"
