@@ -416,6 +416,42 @@ async function main() {
     }
   );
 
+  // Tool "retrievable" minimal pour aider ChatGPT à considérer le MCP comme exploitable
+  server.registerTool(
+    "search_plants",
+    {
+      title: "Rechercher des capacités Leafee",
+      description:
+        "Point d'entrée de recherche générique pour que ChatGPT puisse découvrir ce que Leafee sait faire.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe(
+            "Texte libre décrivant ce que l'utilisateur cherche (plante, problème, fonctionnalité...)."
+          ),
+      }),
+      _meta: {
+        // Indice pour l'UI OpenAI : ce tool peut servir de point d'entrée "search"
+        "openai/retrieval": true,
+      },
+    },
+    async ({ query }) => {
+      const summary =
+        "Leafee MCP est actif. Utilise le tool 'analyze_plant' pour diagnostiquer une plante à partir d'une description et éventuellement d'une image. " +
+        "Ta requête de recherche était : " +
+        query;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: summary,
+          },
+        ],
+      };
+    }
+  );
+
   const transport = new StreamableHTTPServerTransport();
 
   await server.connect(transport);
