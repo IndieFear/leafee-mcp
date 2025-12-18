@@ -302,6 +302,8 @@ async function main() {
       },
     },
     async (input) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Tool:analyze_plant] Called with input: ${JSON.stringify(input)}`);
       // Appel au backend Leafee via une Edge Function Supabase dédiée.
       // L'URL doit être fournie via la variable d'environnement
       // PLANT_ANALYSIS_FUNCTION_URL (ex:
@@ -400,6 +402,9 @@ async function main() {
         [x: string]: unknown;
       };
 
+      // eslint-disable-next-line no-console
+      console.log(`[Tool:analyze_plant] Returning result: ${JSON.stringify(structuredContent)}`);
+
       return {
         structuredContent,
         content: [
@@ -434,6 +439,8 @@ async function main() {
       },
     },
     async ({ query }) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Tool:search] Called with query: ${query}`);
       const summary =
         "Leafee MCP est actif. Utilise le tool 'analyze_plant' pour diagnostiquer une plante à partir d'une description et éventuellement d'une image. " +
         "Ta requête de recherche était : " +
@@ -462,6 +469,8 @@ async function main() {
       }),
     },
     async ({ uri }) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Tool:fetch] Called with uri: ${uri}`);
       return {
         content: [
           {
@@ -476,6 +485,8 @@ async function main() {
   const transport = new StreamableHTTPServerTransport();
 
   await server.connect(transport);
+  // eslint-disable-next-line no-console
+  console.log("[MCP] Server connected to transport");
 
   const app = express();
   app.use(express.json());
@@ -491,10 +502,14 @@ async function main() {
   });
 
   app.post("/mcp", (req, res) => {
+    // eslint-disable-next-line no-console
+    console.log(`[MCP] Incoming POST request: ${JSON.stringify(req.body)}`);
     void transport.handleRequest(req, res, req.body);
   });
 
   app.get("/mcp", (req, res) => {
+    // eslint-disable-next-line no-console
+    console.log(`[MCP] Incoming GET request`);
     void transport.handleRequest(req, res);
   });
 
