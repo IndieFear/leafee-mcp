@@ -342,6 +342,16 @@ async function main() {
   const app = express();
   app.use(express.json());
 
+  // Endpoint de vérification de domaine OpenAI
+  // Voir instructions : placer le token dans
+  // /.well-known/openai-apps-challenge
+  app.get("/.well-known/openai-apps-challenge", (_req, res) => {
+    res
+      .status(200)
+      .type("text/plain")
+      .send("vEtncRd9ZUFWSxBh7jk87AyvDGWZnfK0S_W9JBiVKxA");
+  });
+
   app.post("/mcp", (req, res) => {
     void transport.handleRequest(req, res, req.body);
   });

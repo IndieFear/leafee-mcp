@@ -35,3 +35,4 @@ ENV PORT=3000
 
 # Commande de démarrage
 CMD ["node", "server/dist/index.js"]
+
