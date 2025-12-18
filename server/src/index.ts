@@ -3,70 +3,73 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { z } from "zod";
 
-// Types de base pour l’analyse Leafee
+/**
+ * CONFIGURATION & TYPES
+ */
+const SERVER_NAME = "leafee-mcp";
+const SERVER_VERSION = "1.1.0";
+const PORT = process.env.PORT || 3000;
+const WIDGET_URI = "ui://widget/leafee-plant-analyzer.html";
+
 export type PlantIssueSeverity = "low" | "medium" | "high";
 
 export interface PlantIssue {
-  code: string; // ex: "under_watering", "low_light"
-  label: string; // ex: "Manque d'eau"
+  code: string;
+  label: string;
 }
 
 export interface PlantAnalysisResult {
   plantName: string;
-  confidence: number; // 0-1
+  confidence: number;
   issues: PlantIssue[];
   severity: PlantIssueSeverity;
   shortSummary: string;
 }
 
-// Schéma d’entrée pour le tool analyze_plant (V2 avec image optionnelle)
+/**
+ * SCHÉMAS DE VALIDATION (ZOD)
+ */
 const analyzePlantInputSchema = z.object({
   description: z
     .string()
     .min(5)
-    .describe(
-      "Description de la plante et des symptômes observés (taille, couleur des feuilles, taches, etc.)."
-    ),
+    .describe("Description de la plante et des symptômes observés."),
   room: z
     .string()
     .optional()
-    .describe("Pièce ou emplacement de la plante (salon, salle de bain, extérieur...)."),
+    .describe("Pièce ou emplacement de la plante."),
   wateringFrequency: z
     .string()
     .optional()
-    .describe(
-      "Fréquence d'arrosage typique (par ex. '1 fois par semaine', 'tous les 3 jours')."
-    ),
+    .describe("Fréquence d'arrosage typique."),
   imageUrl: z
     .string()
     .url()
     .optional()
-    .describe(
-      "URL de l'image de la plante à analyser (utilisée pour l'identification via PlantNet)."
-    ),
+    .describe("URL de l'image de la plante à analyser."),
   organ: z
     .string()
     .optional()
-    .describe(
-      "Organe principal visible sur la photo (par ex. 'leaf', 'flower', 'fruit')."
-    ),
+    .describe("Organe principal visible sur la photo."),
 });
 
 async function main() {
   const server = new McpServer({
-    name: "leafee-mcp",
-    version: "1.0.0",
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
   });
 
-  // Resource UI pour le widget Leafee (text/html+skybridge)
+  /**
+   * 1. RESSOURCES (WIDGETS UI)
+   */
   server.registerResource(
     "leafee-plant-widget",
-    "ui://widget/leafee-plant-analyzer.html",
+    WIDGET_URI,
     {},
     async () => ({
       contents: [
         {
-          uri: "ui://widget/leafee-plant-analyzer.html",
+          uri: WIDGET_URI,
           mimeType: "text/html+skybridge",
           text: `
 <!DOCTYPE html>
@@ -75,205 +78,36 @@ async function main() {
     <meta charset="UTF-8" />
     <title>Leafee Plant Analyzer</title>
     <style>
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f5f7fb;
-        color: #0f172a;
-      }
-      .leafee-root {
-        padding: 16px;
-      }
-      .leafee-card {
-        background: #ffffff;
-        border-radius: 16px;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-        padding: 16px 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-      .leafee-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .leafee-avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 999px;
-        background: linear-gradient(135deg, #22c55e, #16a34a);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 700;
-        font-size: 18px;
-      }
-      .leafee-title {
-        font-weight: 600;
-        font-size: 15px;
-      }
-      .leafee-subtitle {
-        font-size: 12px;
-        color: #6b7280;
-      }
-      .leafee-badges {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 4px;
-      }
-      .leafee-badge {
-        border-radius: 999px;
-        padding: 2px 10px;
-        font-size: 11px;
-        font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .leafee-badge-confidence {
-        background: rgba(34, 197, 94, 0.08);
-        color: #15803d;
-      }
-      .leafee-badge-severity-low {
-        background: rgba(34, 197, 94, 0.08);
-        color: #15803d;
-      }
-      .leafee-badge-severity-medium {
-        background: rgba(234, 179, 8, 0.08);
-        color: #a16207;
-      }
-      .leafee-badge-severity-high {
-        background: rgba(239, 68, 68, 0.08);
-        color: #b91c1c;
-      }
-      .leafee-section-title {
-        font-size: 13px;
-        font-weight: 600;
-        margin-top: 8px;
-      }
-      .leafee-issues {
-        list-style: none;
-        padding-left: 0;
-        margin: 4px 0 0 0;
-      }
-      .leafee-issues li {
-        font-size: 13px;
-        margin-bottom: 4px;
-        display: flex;
-        gap: 6px;
-      }
-      .leafee-bullet {
-        width: 6px;
-        height: 6px;
-        margin-top: 6px;
-        border-radius: 999px;
-        background: #22c55e;
-      }
-      .leafee-summary {
-        font-size: 13px;
-        color: #4b5563;
-      }
-      .leafee-empty {
-        font-size: 13px;
-        color: #9ca3af;
-      }
+      body { margin: 0; font-family: system-ui, sans-serif; background: #f5f7fb; color: #0f172a; }
+      .leafee-root { padding: 16px; }
+      .leafee-card { background: #ffffff; border-radius: 16px; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+      .badge { border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+      .severity-low { background: rgba(34, 197, 94, 0.08); color: #15803d; }
+      .severity-medium { background: rgba(234, 179, 8, 0.08); color: #a16207; }
+      .severity-high { background: rgba(239, 68, 68, 0.08); color: #b91c1c; }
     </style>
   </head>
   <body>
     <div class="leafee-root">
       <div class="leafee-card" id="leafee-card">
-        <div class="leafee-header">
-          <div class="leafee-avatar">L</div>
-          <div>
-            <div class="leafee-title">Leafee · Analyse de votre plante</div>
-            <div class="leafee-subtitle" id="leafee-subtitle">
-              En attente d'une analyse de plante...
-            </div>
-            <div class="leafee-badges" id="leafee-badges"></div>
-          </div>
-        </div>
-        <div id="leafee-content"></div>
+        <div id="leafee-content">Chargement du diagnostic...</div>
       </div>
     </div>
     <script type="module">
       const output = (window.openai && window.openai.toolOutput) || {};
-      const subtitleEl = document.getElementById("leafee-subtitle");
-      const badgesEl = document.getElementById("leafee-badges");
       const contentEl = document.getElementById("leafee-content");
 
       function render() {
         if (!output || Object.keys(output).length === 0) {
-          contentEl.innerHTML =
-            '<p class="leafee-empty">Demandez à Leafee d\'analyser une plante pour voir le diagnostic ici.</p>';
+          contentEl.innerHTML = '<p>Demandez à Leafee d\'analyser une plante.</p>';
           return;
         }
-
-        const plantName = output.plantName;
-        const confidence = output.confidence;
-        const issues = output.issues;
-        const severity = output.severity;
-        const shortSummary = output.shortSummary;
-
-        subtitleEl.textContent = plantName
-          ? "Analyse de votre " + plantName
-          : "Analyse de votre plante";
-
-        badgesEl.innerHTML = "";
-        if (typeof confidence === "number") {
-          const badge = document.createElement("span");
-          badge.className = "leafee-badge leafee-badge-confidence";
-          const pct = Math.round(confidence * 100);
-          badge.textContent = "Confiance " + pct + "%";
-          badgesEl.appendChild(badge);
-        }
-
-        if (severity) {
-          const badge = document.createElement("span");
-          badge.className = "leafee-badge leafee-badge-severity-" + severity;
-          const labelMap = {
-            low: "Gravité faible",
-            medium: "Gravité modérée",
-            high: "Gravité élevée",
-          };
-          badge.textContent = labelMap[severity] || "Gravité";
-          badgesEl.appendChild(badge);
-        }
-
-        const issuesList = Array.isArray(issues) ? issues : [];
-
-        let html = "";
-        if (shortSummary) {
-          html +=
-            '<p class="leafee-summary">' + String(shortSummary) + "</p>";
-        }
-
-        if (issuesList.length > 0) {
-          html +=
-            '<div class="leafee-section"><div class="leafee-section-title">Problèmes détectés</div><ul class="leafee-issues">';
-          for (const issue of issuesList) {
-            const label =
-              (issue && issue.label) ||
-              (issue && issue.code) ||
-              "Problème";
-            html +=
-              '<li><span class="leafee-bullet"></span><span>' +
-              String(label) +
-              "</span></li>";
-          }
-          html += "</ul></div>";
-        }
-
-        if (!html) {
-          html =
-            '<p class="leafee-empty">Aucun problème majeur détecté pour cette plante.</p>';
-        }
-
-        contentEl.innerHTML = html;
+        contentEl.innerHTML = \`
+          <div style="font-weight: 600;">\${output.plantName || "Plante"}</div>
+          <div class="badge severity-\${output.severity || 'medium'}">\${output.severity || 'Analyse'}</div>
+          <p style="font-size: 13px; color: #4b5563;">\${output.shortSummary || ""}</p>
+        \`;
       }
-
       render();
     </script>
   </body>
@@ -287,33 +121,32 @@ async function main() {
     })
   );
 
+  /**
+   * 2. OUTILS (TOOLS)
+   */
+
   // Tool principal: analyze_plant
   server.registerTool(
     "analyze_plant",
     {
       title: "Analyser une plante Leafee",
-      description:
-        "Analyse une plante à partir d'une description textuelle et retourne un diagnostic structuré.",
+      description: "Analyse une plante à partir d'une description et retourne un diagnostic.",
       inputSchema: analyzePlantInputSchema,
       _meta: {
-        "openai/outputTemplate": "ui://widget/leafee-plant-analyzer.html",
+        "openai/outputTemplate": WIDGET_URI,
         "openai/toolInvocation/invoking": "Leafee analyse votre plante...",
-        "openai/toolInvocation/invoked": "Leafee a terminé l'analyse de votre plante.",
+        "openai/toolInvocation/invoked": "Analyse terminée.",
+        "openai/widgetAccessible": true,
+        "openai/resultCanProduceWidget": true
       },
     },
     async (input) => {
       // eslint-disable-next-line no-console
-      console.log(`[Tool:analyze_plant] Called with input: ${JSON.stringify(input)}`);
-      // Appel au backend Leafee via une Edge Function Supabase dédiée.
-      // L'URL doit être fournie via la variable d'environnement
-      // PLANT_ANALYSIS_FUNCTION_URL (ex:
-      // https://<project-ref>.functions.supabase.co/plant-analysis)
+      console.log(`[Tool:analyze_plant] Input: ${JSON.stringify(input)}`);
+      
       const fnUrl = process.env.PLANT_ANALYSIS_FUNCTION_URL;
-
       if (!fnUrl) {
-        throw new Error(
-          "PLANT_ANALYSIS_FUNCTION_URL n'est pas configurée dans l'environnement."
-        );
+        throw new Error("PLANT_ANALYSIS_FUNCTION_URL non configurée.");
       }
 
       let analysis: PlantAnalysisResult;
@@ -321,210 +154,124 @@ async function main() {
       try {
         const response = await fetch(fnUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-language": "fr",
-          },
-          body: JSON.stringify({
-            description: input.description,
-            room: input.room ?? undefined,
-            wateringFrequency: input.wateringFrequency ?? undefined,
-            imageUrl: input.imageUrl ?? undefined,
-            organ: input.organ ?? undefined,
-          }),
+          headers: { "Content-Type": "application/json", "x-language": "fr" },
+          body: JSON.stringify(input),
         });
 
         if (!response.ok) {
-          const text = await response.text().catch(() => "");
-          throw new Error(
-            `Edge Function plant-analysis a retourné ${response.status}: ${text}`
-          );
+          throw new Error(`Erreur API: ${response.status}`);
         }
 
-        const json = (await response.json()) as unknown;
-
-        // Validation légère runtime pour se protéger des réponses inattendues
-        const candidate = json as Partial<PlantAnalysisResult>;
-
+        const json = (await response.json()) as Partial<PlantAnalysisResult>;
         analysis = {
-          plantName: candidate.plantName ?? "Plante d'intérieur",
-          confidence:
-            typeof candidate.confidence === "number"
-              ? Math.max(0, Math.min(1, candidate.confidence))
-              : 0.7,
-          issues:
-            Array.isArray(candidate.issues) && candidate.issues.length > 0
-              ? candidate.issues.map((issue) => ({
-                  code:
-                    typeof issue?.code === "string"
-                      ? issue.code
-                      : "unknown_issue",
-                  label:
-                    typeof issue?.label === "string"
-                      ? issue.label
-                      : "Problème potentiel",
-                }))
-              : [],
-          severity:
-            candidate.severity === "low" ||
-            candidate.severity === "medium" ||
-            candidate.severity === "high"
-              ? candidate.severity
-              : "medium",
-          shortSummary:
-            typeof candidate.shortSummary === "string" &&
-            candidate.shortSummary.trim().length > 0
-              ? candidate.shortSummary
-              : "Votre plante montre quelques signes de stress. Ajustons l'arrosage et la lumière, puis surveillons l'évolution.",
+          plantName: json.plantName ?? "Plante d'intérieur",
+          confidence: json.confidence ?? 0.7,
+          issues: Array.isArray(json.issues) ? json.issues : [],
+          severity: json.severity ?? "medium",
+          shortSummary: json.shortSummary ?? "Analyse en cours...",
         };
       } catch (error) {
-        // En cas d'échec, on renvoie un fallback raisonnable pour ne pas casser l'expérience.
         // eslint-disable-next-line no-console
-        console.error("Erreur lors de l'appel à plant-analysis:", error);
-
+        console.error("[Tool:analyze_plant] Error:", error);
         analysis = {
-          plantName: "Plante d'intérieur",
+          plantName: "Plante",
           confidence: 0.5,
-          issues: [
-            {
-              code: "analysis_error",
-              label:
-                "Impossible de récupérer l'analyse détaillée pour le moment. Réessayez plus tard.",
-            },
-          ],
+          issues: [{ code: "error", label: "Analyse impossible" }],
           severity: "medium",
-          shortSummary:
-            "Leafee a rencontré un problème pour analyser cette plante. Vous pouvez vérifier l'arrosage, la lumière et l'état des feuilles en attendant.",
+          shortSummary: "Une erreur est survenue lors de l'analyse.",
         };
       }
 
-      const structuredContent = analysis as unknown as {
-        [x: string]: unknown;
-      };
-
-      // eslint-disable-next-line no-console
-      console.log(`[Tool:analyze_plant] Returning result: ${JSON.stringify(structuredContent)}`);
-
       return {
-        structuredContent,
-        content: [
-          {
-            type: "text",
-            text:
-              "Voici l'analyse de votre plante basée sur votre description. Leafee affiche le diagnostic détaillé dans le widget.",
-          },
-        ],
+        structuredContent: analysis as any,
+        content: [{ type: "text", text: "Diagnostic disponible dans le widget Leafee." }],
         _meta: {
-          originalDescription: input.description,
+          "openai/outputTemplate": WIDGET_URI,
+          "openai/widgetAccessible": true,
+          "openai/resultCanProduceWidget": true
         },
       };
     }
   );
 
-  // Tool "search" minimal pour que ChatGPT considère le MCP comme "retrievable"
+  // Tool "search" (Retrieval)
   server.registerTool(
     "search",
     {
       title: "Search",
-      description:
-        "Search entry point for discovering what Leafee can do.",
-      inputSchema: z.object({
-        query: z
-          .string()
-          .describe("Free-text query describing what the user is looking for."),
-      }),
-      _meta: {
-        // Indice pour l'UI OpenAI : ce tool sert de point d'entrée "search"
-        "openai/retrieval": true,
-      },
+      description: "Rechercher des informations sur les plantes.",
+      inputSchema: z.object({ query: z.string() }),
+      _meta: { "openai/retrieval": true },
     },
     async ({ query }) => {
       // eslint-disable-next-line no-console
-      console.log(`[Tool:search] Called with query: ${query}`);
-      const summary =
-        "Leafee MCP est actif. Utilise le tool 'analyze_plant' pour diagnostiquer une plante à partir d'une description et éventuellement d'une image. " +
-        "Ta requête de recherche était : " +
-        query;
-
+      console.log(`[Tool:search] Query: ${query}`);
       return {
-        content: [
-          {
-            type: "text",
-            text: summary,
-          },
-        ],
+        content: [{ type: "text", text: `Recherche Leafee pour: ${query}` }],
       };
     }
   );
 
-  // Tool "fetch" indispensable pour la conformité "retrieval" d'OpenAI
-  // ChatGPT s'attend à trouver cet outil quand un outil possède l'indice "openai/retrieval"
+  // Tool "fetch" (Retrieval - Requis par OpenAI)
   server.registerTool(
     "fetch",
     {
       title: "Fetch",
-      description: "Récupère le contenu détaillé d'une ressource.",
-      inputSchema: z.object({
-        uri: z.string().describe("L'URI de la ressource à récupérer."),
-      }),
-      _meta: {
-        "openai/retrieval": true,
-      },
+      description: "Récupérer le contenu d'une ressource.",
+      inputSchema: z.object({ uri: z.string() }),
+      _meta: { "openai/retrieval": true },
     },
     async ({ uri }) => {
       // eslint-disable-next-line no-console
-      console.log(`[Tool:fetch] Called with uri: ${uri}`);
+      console.log(`[Tool:fetch] URI: ${uri}`);
       return {
-        content: [
-          {
-            type: "text",
-            text: `Contenu de la ressource : ${uri}. Note : Pour un diagnostic de plante, préférez l'outil 'analyze_plant'.`,
-          },
-        ],
+        content: [{ type: "text", text: `Contenu de la ressource: ${uri}` }],
       };
     }
   );
 
+  /**
+   * 3. TRANSPORT & EXPRESS
+   */
   const transport = new StreamableHTTPServerTransport();
-
   await server.connect(transport);
-  // eslint-disable-next-line no-console
-  console.log("[MCP] Server connected to transport");
 
   const app = express();
   app.use(express.json());
 
-  // Endpoint de vérification de domaine OpenAI
-  // Voir instructions : placer le token dans
-  // /.well-known/openai-apps-challenge
+  // Middleware CORS complet pour l'Apps SDK
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+    if (req.method === "OPTIONS") return res.sendStatus(200);
+    next();
+  });
+
   app.get("/.well-known/openai-apps-challenge", (_req, res) => {
-    res
-      .status(200)
-      .type("text/plain")
-      .send("vEtncRd9ZUFWSxBh7jk87AyvDGWZnfK0S_W9JBiVKxA");
+    res.status(200).type("text/plain").send("vEtncRd9ZUFWSxBh7jk87AyvDGWZnfK0S_W9JBiVKxA");
   });
 
   app.post("/mcp", (req, res) => {
     // eslint-disable-next-line no-console
-    console.log(`[MCP] Incoming POST request: ${JSON.stringify(req.body)}`);
+    console.log(`[MCP] POST Request`);
     void transport.handleRequest(req, res, req.body);
   });
 
   app.get("/mcp", (req, res) => {
     // eslint-disable-next-line no-console
-    console.log(`[MCP] Incoming GET request`);
+    console.log(`[MCP] GET Request`);
     void transport.handleRequest(req, res);
   });
 
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => {
+  app.listen(PORT, () => {
     // eslint-disable-next-line no-console
-    console.log(`Leafee MCP server running on http://localhost:${port}/mcp`);
+    console.log(`Leafee MCP server running on port ${PORT}`);
   });
 }
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("Leafee MCP server failed to start", err);
+  console.error("Failed to start server", err);
   process.exit(1);
 });
