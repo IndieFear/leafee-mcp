@@ -289,11 +289,11 @@ async function main() {
   });
 
   // MCP endpoints
-  app.post("/mcp", (req, res) => {
+  app.post("/", (req, res) => {
     void transport.handleRequest(req, res, req.body);
   });
 
-  app.get("/mcp", (req, res) => {
+  app.get("/", (req, res) => {
     void transport.handleRequest(req, res);
   });
 
