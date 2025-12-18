@@ -199,8 +199,10 @@ async function main() {
     "search",
     {
       title: "Search",
-      description: "Rechercher des informations sur les plantes.",
-      inputSchema: z.object({ query: z.string() }),
+      description: "Rechercher des informations sur les plantes et l'entretien.",
+      inputSchema: z.object({
+        query: z.string().describe("La requête de recherche (ex: 'entretien Monstera', 'tâches brunes feuilles').")
+      }),
       _meta: { "openai/retrieval": true },
     },
     async ({ query }) => {
@@ -217,15 +219,15 @@ async function main() {
     "fetch",
     {
       title: "Fetch",
-      description: "Récupérer le contenu d'une ressource.",
-      inputSchema: z.object({ uri: z.string() }),
+      description: "Récupérer le contenu d'une ressource via son identifiant.",
+      inputSchema: z.object({ id: z.string().describe("L'identifiant de la ressource à récupérer.") }),
       _meta: { "openai/retrieval": true },
     },
-    async ({ uri }) => {
+    async ({ id }) => {
       // eslint-disable-next-line no-console
-      console.log(`[Tool:fetch] URI: ${uri}`);
+      console.log(`[Tool:fetch] ID: ${id}`);
       return {
-        content: [{ type: "text", text: `Contenu de la ressource: ${uri}` }],
+        content: [{ type: "text", text: `Contenu de la ressource: ${id}` }],
       };
     }
   );
