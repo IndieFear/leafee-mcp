@@ -119,10 +119,10 @@ async function bootstrap() {
     {
       title: "Analyser une plante",
       description: "Analyse une plante à partir de sa description ou d'une image.",
-      inputSchema: {
+      inputSchema: z.object({
         description: z.string().describe("Description des symptômes ou de l'état de la plante."),
         imageUrl: z.string().url().optional().describe("URL de l'image de la plante."),
-      },
+      }),
       _meta: {
         "openai/outputTemplate": WIDGET_URI,
         "openai/widgetAccessible": true,
@@ -182,7 +182,47 @@ async function bootstrap() {
   );
 
   /**
-   * 3. TRANSPORT & EXPRESS SERVER
+   * 3. ADDITIONAL TOOLS (Knowledge Base)
+   */
+  server.registerTool(
+    "search_knowledge",
+    {
+      title: "Rechercher des connaissances",
+      description: "Rechercher dans la base de connaissances Leafee pour des guides d'entretien.",
+      inputSchema: z.object({
+        query: z.string().describe("Termes de recherche."),
+      }),
+      _meta: { "openai/retrieval": true },
+    },
+    async ({ query }) => {
+      console.log(`[Tool:search_knowledge] Query: ${query}`);
+      return {
+        content: [{ type: "text", text: `Recherche de guides pour "${query}"...` }],
+        structuredContent: { results: [] }
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_plant_details",
+    {
+      title: "Détails de la plante",
+      description: "Récupérer des informations détaillées sur une plante spécifique par son ID.",
+      inputSchema: z.object({
+        id: z.string().describe("L'ID unique de la plante."),
+      }),
+      _meta: { "openai/retrieval": true },
+    },
+    async ({ id }) => {
+      console.log(`[Tool:get_plant_details] ID: ${id}`);
+      return {
+        content: [{ type: "text", text: `Récupération des détails pour l'ID ${id}...` }],
+      };
+    }
+  );
+
+  /**
+   * 4. TRANSPORT & EXPRESS SERVER
    */
   const transport = new StreamableHTTPServerTransport();
   await server.connect(transport);
