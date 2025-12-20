@@ -5,12 +5,18 @@ import { z } from "zod";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { fileURLToPath } from "node:url";
+
 /**
  * CONSTANTS & CONFIGURATION
  */
 const SERVER_NAME = "leafee-mcp";
-const SERVER_VERSION = "2.0.0";
+const SERVER_VERSION = "2.0.1";
 const PORT = process.env.PORT || 3000;
+
+// Resolve paths relative to the current file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Base URL for fallback/direct access
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -19,8 +25,10 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const WIDGET_URI = "ui://widget/plant-analyzer.html";
 const WIDGET_PATH = "/widget/plant-analyzer";
 
-// File paths for widget assets
-const WEB_SRC_DIR = path.join(process.cwd(), "web", "src");
+// In development (src/index.ts), we are in server/src
+// In production (dist/index.js), we are in server/dist
+// The web folder is at the root level: ../../web/src
+const WEB_SRC_DIR = path.resolve(__dirname, "..", "..", "web", "src");
 const CSS_PATH = path.join(WEB_SRC_DIR, "style.css");
 const JS_PATH = path.join(WEB_SRC_DIR, "widget.js");
 

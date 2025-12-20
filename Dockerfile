@@ -9,8 +9,9 @@ COPY tsconfig.json ./
 # Installer les dépendances
 RUN npm ci
 
-# Copier le code source
+# Copier le code source (server et web pour les assets)
 COPY server/ ./server/
+COPY web/ ./web/
 
 # Construire l'application
 RUN npm run build
@@ -27,6 +28,9 @@ RUN npm ci --only=production
 # Copier les fichiers compilés depuis le builder
 COPY --from=builder /app/server/dist ./server/dist
 
+# COPIE CRUCIALE : Les fichiers du widget pour qu'ils soient accessibles au runtime
+COPY --from=builder /app/web/src ./web/src
+
 # Exposer le port
 EXPOSE 3000
 
@@ -35,5 +39,3 @@ ENV PORT=3000
 
 # Commande de démarrage
 CMD ["node", "server/dist/index.js"]
-
-
